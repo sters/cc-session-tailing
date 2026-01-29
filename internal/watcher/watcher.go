@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,8 +11,8 @@ import (
 
 // Event represents a file event.
 type Event struct {
-	Path      string
-	SessionID string
+	Path       string
+	SessionID  string
 	IsSubagent bool
 }
 
@@ -28,7 +29,7 @@ type Watcher struct {
 func New(projectPath string) (*Watcher, error) {
 	fsWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create fsnotify watcher: %w", err)
 	}
 
 	w := &Watcher{
@@ -44,33 +45,45 @@ func New(projectPath string) (*Watcher, error) {
 
 // Start begins watching the project directory.
 func (w *Watcher) Start() error {
-	// Add the project directory
+	// Add the project directory.
 	if err := w.addDirRecursive(w.projectPath); err != nil {
 		return err
 	}
 
 	go w.run()
+
 	return nil
 }
 
 // Stop stops the watcher.
 func (w *Watcher) Stop() error {
 	close(w.done)
-	return w.fsWatcher.Close()
+
+	if err := w.fsWatcher.Close(); err != nil {
+		return fmt.Errorf("failed to close fsnotify watcher: %w", err)
+	}
+
+	return nil
 }
 
 func (w *Watcher) addDirRecursive(dir string) error {
-	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil || info == nil {
+			// Skip inaccessible paths by returning filepath.SkipDir for dirs.
+			return filepath.SkipDir
 		}
 		if info.IsDir() {
-			if err := w.fsWatcher.Add(path); err != nil {
-				return nil // Skip errors
-			}
+			// Ignore errors when adding watch - directory may be removed.
+			_ = w.fsWatcher.Add(path)
 		}
+
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("failed to walk directory %s: %w", dir, err)
+	}
+
+	return nil
 }
 
 func (w *Watcher) run() {
@@ -98,11 +111,12 @@ func (w *Watcher) run() {
 func (w *Watcher) handleEvent(event fsnotify.Event) {
 	path := event.Name
 
-	// Handle new directories
+	// Handle new directories.
 	if event.Op&fsnotify.Create != 0 {
 		info, err := os.Stat(path)
 		if err == nil && info.IsDir() {
 			_ = w.addDirRecursive(path)
+
 			return
 		}
 	}
@@ -144,16 +158,18 @@ func (w *Watcher) parseSessionInfo(path string) (string, bool) {
 		return "", false
 	}
 
-	// Main session: {session-id}.jsonl
+	// Main session: {session-id}.jsonl.
 	if len(parts) == 1 {
 		sessionID := strings.TrimSuffix(parts[0], ".jsonl")
+
 		return sessionID, false
 	}
 
-	// Subagent: {session-id}/subagents/agent-{id}.jsonl
+	// Subagent: {session-id}/subagents/agent-{id}.jsonl.
 	if len(parts) >= 3 && parts[1] == "subagents" {
 		agentFile := strings.TrimSuffix(parts[len(parts)-1], ".jsonl")
 		sessionID := parts[0] + "/" + agentFile
+
 		return sessionID, true
 	}
 
@@ -164,9 +180,10 @@ func (w *Watcher) parseSessionInfo(path string) (string, bool) {
 func (w *Watcher) ScanExisting() ([]Event, error) {
 	var events []Event
 
-	err := filepath.Walk(w.projectPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
+	err := filepath.Walk(w.projectPath, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil || info == nil {
+			// Skip inaccessible paths.
+			return filepath.SkipDir
 		}
 		if info.IsDir() {
 			return nil
@@ -183,8 +200,12 @@ func (w *Watcher) ScanExisting() ([]Event, error) {
 				IsSubagent: isSubagent,
 			})
 		}
+
 		return nil
 	})
+	if err != nil {
+		return events, fmt.Errorf("failed to scan existing files: %w", err)
+	}
 
-	return events, err
+	return events, nil
 }

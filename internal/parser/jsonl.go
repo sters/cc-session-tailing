@@ -3,6 +3,7 @@ package parser
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 )
@@ -24,39 +25,43 @@ type MessageContent struct {
 
 // UnmarshalJSON handles both string and array content.
 func (m *MessageContent) UnmarshalJSON(data []byte) error {
-	// Try to unmarshal as a struct with content array first
+	// Try to unmarshal as a struct with content array first.
 	var structured struct {
 		Content []ContentBlock `json:"content"`
 	}
 	if err := json.Unmarshal(data, &structured); err == nil && len(structured.Content) > 0 {
 		m.Content = structured.Content
+
 		return nil
 	}
 
-	// Try to unmarshal as a struct with content as string
+	// Try to unmarshal as a struct with content as string.
 	var stringContent struct {
 		Content string `json:"content"`
 	}
 	if err := json.Unmarshal(data, &stringContent); err == nil && stringContent.Content != "" {
 		m.Content = []ContentBlock{{Type: "text", Text: stringContent.Content}}
+
 		return nil
 	}
 
-	// Content might be at the top level as a string
+	// Content might be at the top level as a string.
 	var rawContent struct {
 		Content json.RawMessage `json:"content"`
 	}
 	if err := json.Unmarshal(data, &rawContent); err == nil && len(rawContent.Content) > 0 {
-		// Check if it's a string
+		// Check if it's a string.
 		var str string
 		if err := json.Unmarshal(rawContent.Content, &str); err == nil {
 			m.Content = []ContentBlock{{Type: "text", Text: str}}
+
 			return nil
 		}
-		// Check if it's an array
+		// Check if it's an array.
 		var blocks []ContentBlock
 		if err := json.Unmarshal(rawContent.Content, &blocks); err == nil {
 			m.Content = blocks
+
 			return nil
 		}
 	}
@@ -77,7 +82,7 @@ type Message struct {
 func ParseFile(path string) ([]Message, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 	defer file.Close()
 
@@ -89,7 +94,7 @@ func Parse(r io.Reader) ([]Message, error) {
 	var messages []Message
 	scanner := bufio.NewScanner(r)
 
-	// Set a larger buffer for long lines
+	// Set a larger buffer for long lines.
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
 
@@ -101,14 +106,14 @@ func Parse(r io.Reader) ([]Message, error) {
 
 		var msg Message
 		if err := json.Unmarshal(line, &msg); err != nil {
-			// Skip malformed lines
+			// Skip malformed lines.
 			continue
 		}
 		messages = append(messages, msg)
 	}
 
 	if err := scanner.Err(); err != nil {
-		return messages, err
+		return messages, fmt.Errorf("scanner error: %w", err)
 	}
 
 	return messages, nil
@@ -118,13 +123,13 @@ func Parse(r io.Reader) ([]Message, error) {
 func ParseFromOffset(path string, offset int64) ([]Message, int64, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, offset, err
+		return nil, offset, fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 	defer file.Close()
 
 	if offset > 0 {
 		if _, err := file.Seek(offset, io.SeekStart); err != nil {
-			return nil, offset, err
+			return nil, offset, fmt.Errorf("failed to seek to offset %d: %w", offset, err)
 		}
 	}
 
@@ -133,10 +138,10 @@ func ParseFromOffset(path string, offset int64) ([]Message, int64, error) {
 		return messages, offset, err
 	}
 
-	// Get new offset
+	// Get new offset.
 	newOffset, err := file.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return messages, offset, err
+		return messages, offset, fmt.Errorf("failed to get current offset: %w", err)
 	}
 
 	return messages, newOffset, nil

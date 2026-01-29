@@ -1,11 +1,10 @@
 package tui
 
 import (
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sters/cc-session-tailing/internal/parser"
 	"github.com/sters/cc-session-tailing/internal/session"
 	"github.com/sters/cc-session-tailing/internal/watcher"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // FileUpdateMsg is sent when a file is updated.
@@ -15,26 +14,29 @@ type FileUpdateMsg struct {
 
 // Model is the bubbletea model for the TUI.
 type Model struct {
-	manager     *session.Manager
-	watcher     *watcher.Watcher
-	width       int
-	height      int
-	scrollPos   []int // scroll position for each panel
-	ready       bool
+	manager   *session.Manager
+	watcher   *watcher.Watcher
+	renderer  *Renderer
+	width     int
+	height    int
+	scrollPos []int // scroll position for each panel
+	ready     bool
 }
 
 // NewModel creates a new TUI model.
-func NewModel(manager *session.Manager, w *watcher.Watcher) Model {
+func NewModel(manager *session.Manager, w *watcher.Watcher) *Model {
 	panels := manager.PanelCount()
-	return Model{
+
+	return &Model{
 		manager:   manager,
 		watcher:   w,
+		renderer:  NewRenderer(NewStyles()),
 		scrollPos: make([]int, panels),
 	}
 }
 
 // Init initializes the model.
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		waitForFileEvents(m.watcher),
 	)

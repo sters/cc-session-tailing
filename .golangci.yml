@@ -37,3 +37,7 @@ issues:
         - goerr113
         - gosec
         - paralleltest
+    # ldflags variables must be package-level globals.
+    - path: cmd/build_vars\.go
+      linters:
+        - gochecknoglobals

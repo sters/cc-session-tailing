@@ -41,6 +41,7 @@ func (m *Manager) GetOrCreateSession(sessionID, path string, isSubagent bool) *S
 
 	if s, ok := m.sessions[sessionID]; ok {
 		s.LastUpdate = time.Now()
+
 		return s
 	}
 
@@ -84,10 +85,11 @@ func (m *Manager) assignPanel(sessionID string) {
 		}
 	}
 
-	// Find an empty panel
-	for i := 0; i < m.panels; i++ {
+	// Find an empty panel.
+	for i := range m.panels {
 		if _, ok := m.panelAssign[i]; !ok {
 			m.panelAssign[i] = sessionID
+
 			return
 		}
 	}
@@ -101,7 +103,7 @@ func (m *Manager) assignPanel(sessionID string) {
 
 // getOldestPanel returns the panel with the oldest session.
 func (m *Manager) getOldestPanel() int {
-	var oldestPanel = -1
+	oldestPanel := -1
 	var oldestTime time.Time
 
 	for panel, sessionID := range m.panelAssign {
@@ -125,13 +127,14 @@ func (m *Manager) GetPanelSessions() []*Session {
 	defer m.mu.RUnlock()
 
 	result := make([]*Session, m.panels)
-	for i := 0; i < m.panels; i++ {
+	for i := range m.panels {
 		if sessionID, ok := m.panelAssign[i]; ok {
 			if s, ok := m.sessions[sessionID]; ok {
 				result[i] = s
 			}
 		}
 	}
+
 	return result
 }
 
@@ -139,6 +142,7 @@ func (m *Manager) GetPanelSessions() []*Session {
 func (m *Manager) GetSession(sessionID string) *Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	return m.sessions[sessionID]
 }
 
