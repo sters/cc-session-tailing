@@ -6,8 +6,6 @@
 
 A real-time TUI (Terminal User Interface) viewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) session logs. Monitor multiple Claude Code sessions simultaneously with an intuitive multi-panel display.
 
-![demo](docs/demo.gif)
-
 ## Features
 
 - **Real-time Monitoring**: Watch Claude Code session logs as they happen
