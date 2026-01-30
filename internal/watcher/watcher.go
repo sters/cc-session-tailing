@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
@@ -176,9 +177,15 @@ func (w *Watcher) parseSessionInfo(path string) (string, bool) {
 	return "", false
 }
 
-// ScanExisting scans for existing JSONL files.
+// eventWithModTime holds an event with its file modification time for sorting.
+type eventWithModTime struct {
+	event   Event
+	modTime int64
+}
+
+// ScanExisting scans for existing JSONL files and returns them sorted by modification time (oldest first).
 func (w *Watcher) ScanExisting() ([]Event, error) {
-	var events []Event
+	var eventsWithTime []eventWithModTime
 
 	err := filepath.Walk(w.projectPath, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil || info == nil {
@@ -194,17 +201,31 @@ func (w *Watcher) ScanExisting() ([]Event, error) {
 
 		sessionID, isSubagent := w.parseSessionInfo(path)
 		if sessionID != "" {
-			events = append(events, Event{
-				Path:       path,
-				SessionID:  sessionID,
-				IsSubagent: isSubagent,
+			eventsWithTime = append(eventsWithTime, eventWithModTime{
+				event: Event{
+					Path:       path,
+					SessionID:  sessionID,
+					IsSubagent: isSubagent,
+				},
+				modTime: info.ModTime().UnixNano(),
 			})
 		}
 
 		return nil
 	})
 	if err != nil {
-		return events, fmt.Errorf("failed to scan existing files: %w", err)
+		return nil, fmt.Errorf("failed to scan existing files: %w", err)
+	}
+
+	// Sort by modification time (oldest first) so that newest sessions end up in panels.
+	sort.Slice(eventsWithTime, func(i, j int) bool {
+		return eventsWithTime[i].modTime < eventsWithTime[j].modTime
+	})
+
+	// Extract events in sorted order.
+	events := make([]Event, len(eventsWithTime))
+	for i, e := range eventsWithTime {
+		events[i] = e.event
 	}
 
 	return events, nil
