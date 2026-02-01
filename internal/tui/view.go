@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -49,7 +50,8 @@ func (m *Model) renderPanelView() string {
 	panelsRow := lipgloss.JoinHorizontal(lipgloss.Top, panelViews...)
 
 	// Help line.
-	help := m.renderer.styles.HelpStyle.Render("q: quit | j/k: scroll | t: tree mode | Watching for sessions...")
+	help := m.renderer.styles.HelpStyle.Render("q: quit | j/k: scroll | p: panels (%d) | t: tree mode | Watching for sessions...")
+	help = fmt.Sprintf(help, panels)
 
 	return lipgloss.JoinVertical(lipgloss.Left, panelsRow, help)
 }

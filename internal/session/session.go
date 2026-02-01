@@ -187,6 +187,19 @@ func (m *Manager) PanelCount() int {
 	return m.panels
 }
 
+// SetPanelCount sets the number of panels (1-5, cycles).
+func (m *Manager) SetPanelCount(count int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if count < 1 {
+		count = 1
+	} else if count > 5 {
+		count = 1
+	}
+	m.panels = count
+}
+
 // GetAllSessions returns all sessions sorted by last update time (newest first).
 func (m *Manager) GetAllSessions() []*Session {
 	m.mu.RLock()

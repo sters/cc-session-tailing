@@ -62,9 +62,22 @@ func (m *Model) updatePanelMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scrollDown()
 	case "k", "up":
 		m.scrollUp()
+	case "p":
+		m.cyclePanelCount()
 	}
 
 	return m, nil
+}
+
+func (m *Model) cyclePanelCount() {
+	current := m.manager.PanelCount()
+	next := current + 1
+	if next > 5 {
+		next = 1
+	}
+	m.manager.SetPanelCount(next)
+	// Resize scrollPos array.
+	m.scrollPos = make([]int, next)
 }
 
 func (m *Model) scrollDown() {
@@ -78,7 +91,27 @@ func (m *Model) scrollDown() {
 
 func (m *Model) scrollUp() {
 	// Scroll up = show older content = increase scrollPos
+	// Get sessions to calculate max scroll for each panel.
+	sessions := m.manager.GetPanelSessions()
+	panels := m.manager.PanelCount()
+	panelHeight := m.height - 2 - 2 - 1 // total height - help line - border - header
+
 	for i := range m.scrollPos {
-		m.scrollPos[i]++
+		if i >= panels {
+			continue
+		}
+		sess := sessions[i]
+		if sess == nil {
+			continue
+		}
+		// Estimate total lines (rough estimate based on message count).
+		totalLines := len(sess.Messages) * 3
+		maxScroll := totalLines - panelHeight
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if m.scrollPos[i] < maxScroll {
+			m.scrollPos[i]++
+		}
 	}
 }

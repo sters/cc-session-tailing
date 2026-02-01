@@ -85,16 +85,24 @@ func (r *Renderer) RenderPanel(sess *session.Session, width, height, scrollPos i
 		return ""
 	}
 
-	// Render header.
-	header := r.renderHeader(sess, innerWidth)
+	// Render header (account for scrollbar width).
+	header := r.renderHeader(sess, innerWidth-1)
+
 	headerHeight := lipgloss.Height(header)
 
-	// Render body.
+	// Render body (account for scrollbar width).
 	bodyHeight := innerHeight - headerHeight
-	body := r.renderBody(sess, innerWidth, bodyHeight, scrollPos)
+	bodyWidth := innerWidth - 1 // Reserve space for scrollbar
+	body, totalLines := r.renderBodyWithInfo(sess, bodyWidth, bodyHeight, scrollPos)
 
-	// Combine.
-	content := lipgloss.JoinVertical(lipgloss.Left, header, body)
+	// Render scrollbar.
+	scrollbar := r.renderScrollbar(bodyHeight, totalLines, bodyHeight, scrollPos)
+
+	// Combine body with scrollbar.
+	bodyWithScrollbar := lipgloss.JoinHorizontal(lipgloss.Top, body, scrollbar)
+
+	// Combine header and body.
+	content := lipgloss.JoinVertical(lipgloss.Left, header, bodyWithScrollbar)
 
 	return r.styles.PanelBorder.Width(innerWidth).Height(innerHeight).Render(content)
 }
@@ -130,8 +138,16 @@ func (r *Renderer) renderHeader(sess *session.Session, width int) string {
 }
 
 func (r *Renderer) renderBody(sess *session.Session, width, height, scrollPos int) string {
+	body, _ := r.renderBodyWithInfo(sess, width, height, scrollPos)
+	return body
+}
+
+func (r *Renderer) renderBodyWithInfo(sess *session.Session, width, height, scrollPos int) (string, int) {
 	if len(sess.Messages) == 0 {
-		return r.styles.EmptyStyle.Render("No messages yet...")
+		emptyLine := r.styles.EmptyStyle.Render("No messages yet...")
+		// Pad to fixed width.
+		padded := lipgloss.NewStyle().Width(width).Render(emptyLine)
+		return padded, 0
 	}
 
 	lines := make([]string, 0, len(sess.Messages)*3)
@@ -148,6 +164,15 @@ func (r *Renderer) renderBody(sess *session.Session, width, height, scrollPos in
 	// scrollPos > 0 means scroll up to see older content.
 	totalLines := len(lines)
 
+	// Clamp scrollPos to valid range.
+	maxScroll := totalLines - height
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scrollPos > maxScroll {
+		scrollPos = maxScroll
+	}
+
 	// Calculate the end position (newest line to show).
 	endPos := totalLines - scrollPos
 	if endPos < height {
@@ -163,8 +188,66 @@ func (r *Renderer) renderBody(sess *session.Session, width, height, scrollPos in
 		startPos = 0
 	}
 
-	// Extract visible lines.
-	lines = lines[startPos:endPos]
+	// Extract visible lines and pad each to fixed width.
+	visibleLines := lines[startPos:endPos]
+	paddedLines := make([]string, len(visibleLines))
+	lineStyle := lipgloss.NewStyle().Width(width)
+	for i, line := range visibleLines {
+		paddedLines[i] = lineStyle.Render(line)
+	}
+
+	return strings.Join(paddedLines, "\n"), totalLines
+}
+
+// renderScrollbar renders a scrollbar indicator.
+func (r *Renderer) renderScrollbar(height, totalLines, visibleLines, scrollPos int) string {
+	scrollbarStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	thumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+
+	// If all content fits, show empty track.
+	if totalLines <= visibleLines {
+		var lines []string
+		for i := 0; i < height; i++ {
+			lines = append(lines, scrollbarStyle.Render("│"))
+		}
+		return strings.Join(lines, "\n")
+	}
+
+	// Calculate thumb size and position.
+	thumbHeight := max(1, height*visibleLines/totalLines)
+	scrollableRange := totalLines - visibleLines
+
+	// Clamp scrollPos to valid range.
+	if scrollPos > scrollableRange {
+		scrollPos = scrollableRange
+	}
+	if scrollPos < 0 {
+		scrollPos = 0
+	}
+
+	thumbPos := 0
+	if scrollableRange > 0 {
+		// scrollPos=0 means at bottom, scrollPos=scrollableRange means at top
+		// We want thumbPos=0 when at top, thumbPos=height-thumbHeight when at bottom
+		thumbPos = int(float64(scrollableRange-scrollPos) / float64(scrollableRange) * float64(height-thumbHeight))
+	}
+
+	// Clamp thumbPos to valid range.
+	if thumbPos < 0 {
+		thumbPos = 0
+	}
+	if thumbPos > height-thumbHeight {
+		thumbPos = height - thumbHeight
+	}
+
+	var lines []string
+	for i := 0; i < height; i++ {
+		if i >= thumbPos && i < thumbPos+thumbHeight {
+			lines = append(lines, thumbStyle.Render("┃"))
+		} else {
+			lines = append(lines, scrollbarStyle.Render("│"))
+		}
+	}
 
 	return strings.Join(lines, "\n")
 }
