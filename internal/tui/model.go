@@ -21,9 +21,11 @@ type Model struct {
 	height    int
 	scrollPos []int // scroll position for each panel
 	ready     bool
+	viewMode  ViewMode
+	treeView  *TreeView
 }
 
-// NewModel creates a new TUI model.
+// NewModel creates a new TUI model with panel mode.
 func NewModel(manager *session.Manager, w *watcher.Watcher) *Model {
 	panels := manager.PanelCount()
 
@@ -32,6 +34,22 @@ func NewModel(manager *session.Manager, w *watcher.Watcher) *Model {
 		watcher:   w,
 		renderer:  NewRenderer(NewStyles()),
 		scrollPos: make([]int, panels),
+		viewMode:  ViewModePanel,
+		treeView:  NewTreeView(manager),
+	}
+}
+
+// NewModelWithMode creates a new TUI model with the specified view mode.
+func NewModelWithMode(manager *session.Manager, w *watcher.Watcher, mode ViewMode) *Model {
+	panels := manager.PanelCount()
+
+	return &Model{
+		manager:   manager,
+		watcher:   w,
+		renderer:  NewRenderer(NewStyles()),
+		scrollPos: make([]int, panels),
+		viewMode:  mode,
+		treeView:  NewTreeView(manager),
 	}
 }
 
@@ -57,7 +75,12 @@ func waitForFileEvents(w *watcher.Watcher) tea.Cmd {
 // processFileUpdate processes a file update event.
 func (m *Model) processFileUpdate(event watcher.Event) {
 	// Get or create session
-	sess := m.manager.GetOrCreateSession(event.SessionID, event.Path, event.IsSubagent)
+	var sess *session.Session
+	if event.ParentID != "" {
+		sess = m.manager.GetOrCreateSessionWithParent(event.SessionID, event.Path, event.ParentID, event.IsSubagent)
+	} else {
+		sess = m.manager.GetOrCreateSession(event.SessionID, event.Path, event.IsSubagent)
+	}
 
 	// Parse new messages from the file
 	messages, newOffset, err := parser.ParseFromOffset(event.Path, sess.Offset)
@@ -67,5 +90,25 @@ func (m *Model) processFileUpdate(event watcher.Event) {
 
 	if len(messages) > 0 {
 		m.manager.UpdateSession(event.SessionID, messages, newOffset)
+	}
+}
+
+// ViewMode returns the current view mode.
+func (m *Model) ViewMode() ViewMode {
+	return m.viewMode
+}
+
+// SetViewMode sets the view mode.
+func (m *Model) SetViewMode(mode ViewMode) {
+	m.viewMode = mode
+}
+
+// ToggleViewMode toggles between tree and panel modes.
+func (m *Model) ToggleViewMode() {
+	if m.viewMode == ViewModeTree {
+		m.viewMode = ViewModePanel
+	} else {
+		m.viewMode = ViewModeTree
+		m.treeView.RefreshSessions()
 	}
 }

@@ -12,6 +12,18 @@ func (m *Model) View() string {
 		return "Initializing..."
 	}
 
+	if m.viewMode == ViewModeTree {
+		return m.renderTreeView()
+	}
+
+	return m.renderPanelView()
+}
+
+func (m *Model) renderTreeView() string {
+	return m.treeView.View()
+}
+
+func (m *Model) renderPanelView() string {
 	// Calculate panel dimensions.
 	panels := m.manager.PanelCount()
 	panelWidth := m.width / panels
@@ -37,7 +49,7 @@ func (m *Model) View() string {
 	panelsRow := lipgloss.JoinHorizontal(lipgloss.Top, panelViews...)
 
 	// Help line.
-	help := m.renderer.styles.HelpStyle.Render("q: quit | j/k: scroll | Watching for sessions...")
+	help := m.renderer.styles.HelpStyle.Render("q: quit | j/k: scroll | t: tree mode | Watching for sessions...")
 
 	return lipgloss.JoinVertical(lipgloss.Left, panelsRow, help)
 }

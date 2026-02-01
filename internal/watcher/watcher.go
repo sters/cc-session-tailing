@@ -14,6 +14,7 @@ import (
 type Event struct {
 	Path       string
 	SessionID  string
+	ParentID   string // Parent session ID for subagents.
 	IsSubagent bool
 }
 
@@ -133,7 +134,7 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	}
 
 	// Parse session ID and check if subagent
-	sessionID, isSubagent := w.parseSessionInfo(path)
+	sessionID, parentID, isSubagent := w.parseSessionInfo(path)
 	if sessionID == "" {
 		return
 	}
@@ -142,39 +143,41 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	case w.Events <- Event{
 		Path:       path,
 		SessionID:  sessionID,
+		ParentID:   parentID,
 		IsSubagent: isSubagent,
 	}:
 	default:
 	}
 }
 
-func (w *Watcher) parseSessionInfo(path string) (string, bool) {
+func (w *Watcher) parseSessionInfo(path string) (string, string, bool) {
 	rel, err := filepath.Rel(w.projectPath, path)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 
 	parts := strings.Split(rel, string(filepath.Separator))
 	if len(parts) == 0 {
-		return "", false
+		return "", "", false
 	}
 
 	// Main session: {session-id}.jsonl.
 	if len(parts) == 1 {
 		sessionID := strings.TrimSuffix(parts[0], ".jsonl")
 
-		return sessionID, false
+		return sessionID, "", false
 	}
 
 	// Subagent: {session-id}/subagents/agent-{id}.jsonl.
 	if len(parts) >= 3 && parts[1] == "subagents" {
 		agentFile := strings.TrimSuffix(parts[len(parts)-1], ".jsonl")
-		sessionID := parts[0] + "/" + agentFile
+		parentID := parts[0]
+		sessionID := parentID + "/" + agentFile
 
-		return sessionID, true
+		return sessionID, parentID, true
 	}
 
-	return "", false
+	return "", "", false
 }
 
 // eventWithModTime holds an event with its file modification time for sorting.
@@ -199,12 +202,13 @@ func (w *Watcher) ScanExisting() ([]Event, error) {
 			return nil
 		}
 
-		sessionID, isSubagent := w.parseSessionInfo(path)
+		sessionID, parentID, isSubagent := w.parseSessionInfo(path)
 		if sessionID != "" {
 			eventsWithTime = append(eventsWithTime, eventWithModTime{
 				event: Event{
 					Path:       path,
 					SessionID:  sessionID,
+					ParentID:   parentID,
 					IsSubagent: isSubagent,
 				},
 				modTime: info.ModTime().UnixNano(),

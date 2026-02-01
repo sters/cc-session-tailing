@@ -28,6 +28,7 @@ func (e *ProjectNotFoundError) Error() string {
 type CLI struct {
 	panels      int
 	projectPath string
+	mode        string
 	rootCmd     *cobra.Command
 }
 
@@ -38,7 +39,11 @@ func NewCLI() *CLI {
 		Use:   "cc-session-tailing",
 		Short: "Real-time TUI viewer for Claude Code session logs",
 		Long: `A TUI application that monitors Claude Code session logs in real-time.
-Shows session activity in multiple panels with LRU-based panel assignment.`,
+Shows session activity in multiple panels with LRU-based panel assignment.
+
+View modes:
+  tree  - Session tree on left, log viewport on right (default)
+  panel - Multiple panels side by side`,
 		RunE: cli.runTUI,
 	}
 
@@ -55,8 +60,9 @@ Shows session activity in multiple panels with LRU-based panel assignment.`,
 	}
 
 	cli.rootCmd.AddCommand(versionCmd)
-	cli.rootCmd.Flags().IntVarP(&cli.panels, "panels", "p", 4, "Number of panels to display")
+	cli.rootCmd.Flags().IntVarP(&cli.panels, "panels", "p", 4, "Number of panels to display (panel mode)")
 	cli.rootCmd.Flags().StringVarP(&cli.projectPath, "project", "d", ".", "Project directory to watch")
+	cli.rootCmd.Flags().StringVarP(&cli.mode, "mode", "m", "", "View mode: tree or panel (default: tree, or panel if -p is specified)")
 
 	return cli
 }
@@ -69,7 +75,7 @@ func Execute() {
 	}
 }
 
-func (cli *CLI) runTUI(_ *cobra.Command, _ []string) error {
+func (cli *CLI) runTUI(cmd *cobra.Command, _ []string) error {
 	// Resolve project path.
 	absProjectPath, err := filepath.Abs(cli.projectPath)
 	if err != nil {
@@ -114,15 +120,23 @@ func (cli *CLI) runTUI(_ *cobra.Command, _ []string) error {
 
 	// Process existing files.
 	for _, event := range existingEvents {
-		sess := manager.GetOrCreateSession(event.SessionID, event.Path, event.IsSubagent)
+		var sess *session.Session
+		if event.ParentID != "" {
+			sess = manager.GetOrCreateSessionWithParent(event.SessionID, event.Path, event.ParentID, event.IsSubagent)
+		} else {
+			sess = manager.GetOrCreateSession(event.SessionID, event.Path, event.IsSubagent)
+		}
 		messages, newOffset, err := parser.ParseFromOffset(event.Path, sess.Offset)
 		if err == nil && len(messages) > 0 {
 			manager.UpdateSession(event.SessionID, messages, newOffset)
 		}
 	}
 
+	// Determine view mode.
+	viewMode := cli.determineViewMode(cmd)
+
 	// Create TUI model.
-	model := tui.NewModel(manager, w)
+	model := tui.NewModelWithMode(manager, w, viewMode)
 
 	// Run bubbletea program.
 	p := tea.NewProgram(model, tea.WithAltScreen())
@@ -131,6 +145,29 @@ func (cli *CLI) runTUI(_ *cobra.Command, _ []string) error {
 	}
 
 	return nil
+}
+
+func (cli *CLI) determineViewMode(cmd *cobra.Command) tui.ViewMode {
+	// If -m is explicitly specified, use that.
+	if cli.mode != "" {
+		switch cli.mode {
+		case "panel":
+			return tui.ViewModePanel
+		case "tree":
+			return tui.ViewModeTree
+		default:
+			// Invalid mode, default to tree.
+			return tui.ViewModeTree
+		}
+	}
+
+	// If -p is specified (even as default), use panel mode.
+	if cmd.Flags().Changed("panels") {
+		return tui.ViewModePanel
+	}
+
+	// Default to tree mode.
+	return tui.ViewModeTree
 }
 
 // pathToClaudePath converts an absolute path to Claude's path format.
