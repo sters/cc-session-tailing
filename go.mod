@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/fsnotify/fsnotify v1.5.4
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/spf13/cobra v1.9.1
 )
