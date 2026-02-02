@@ -204,6 +204,7 @@ func (m *Manager) PanelCount() int {
 }
 
 // SetPanelCount sets the number of panels (1-5, cycles).
+// When increasing panel count, unassigned sessions are automatically added.
 func (m *Manager) SetPanelCount(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -213,7 +214,49 @@ func (m *Manager) SetPanelCount(count int) {
 	} else if count > 5 {
 		count = 1
 	}
+
+	oldCount := m.panels
 	m.panels = count
+
+	// If panel count increased, assign unassigned sessions to new panels.
+	if count > oldCount {
+		m.fillEmptyPanels()
+	}
+}
+
+// fillEmptyPanels assigns unassigned sessions to empty panel slots.
+func (m *Manager) fillEmptyPanels() {
+	// Find which sessions are already assigned.
+	assigned := make(map[string]bool)
+	for _, sessionID := range m.panelAssign {
+		assigned[sessionID] = true
+	}
+
+	// Collect unassigned sessions sorted by LastUpdate (newest first).
+	var unassigned []*Session
+	for _, s := range m.sessions {
+		if !assigned[s.ID] {
+			unassigned = append(unassigned, s)
+		}
+	}
+
+	// Sort by LastUpdate descending.
+	for i := range len(unassigned) - 1 {
+		for j := i + 1; j < len(unassigned); j++ {
+			if unassigned[j].LastUpdate.After(unassigned[i].LastUpdate) {
+				unassigned[i], unassigned[j] = unassigned[j], unassigned[i]
+			}
+		}
+	}
+
+	// Assign to empty panels.
+	unassignedIdx := 0
+	for i := range m.panels {
+		if _, ok := m.panelAssign[i]; !ok && unassignedIdx < len(unassigned) {
+			m.panelAssign[i] = unassigned[unassignedIdx].ID
+			unassignedIdx++
+		}
+	}
 }
 
 // GetAllSessions returns all sessions sorted by last update time (newest first).
