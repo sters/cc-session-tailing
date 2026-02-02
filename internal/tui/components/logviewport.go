@@ -70,7 +70,7 @@ func (l *LogViewport) SetSize(width, height int) {
 	l.width = width
 	l.height = height
 	// Account for border and scrollbar.
-	l.viewport.Width = width - 3 // border (2) + scrollbar (1)
+	l.viewport.Width = width - 3   // border (2) + scrollbar (1)
 	l.viewport.Height = height - 4 // border + header
 }
 
@@ -169,9 +169,10 @@ func (l *LogViewport) renderScrollbar() string {
 	// If all content fits, show empty track.
 	if totalLines <= visibleLines {
 		var lines []string
-		for i := 0; i < height; i++ {
+		for range height {
 			lines = append(lines, scrollbarStyle.Render("│"))
 		}
+
 		return strings.Join(lines, "\n")
 	}
 
@@ -184,7 +185,7 @@ func (l *LogViewport) renderScrollbar() string {
 	}
 
 	var lines []string
-	for i := 0; i < height; i++ {
+	for i := range height {
 		if i >= thumbPos && i < thumbPos+thumbHeight {
 			lines = append(lines, thumbStyle.Render("┃"))
 		} else {

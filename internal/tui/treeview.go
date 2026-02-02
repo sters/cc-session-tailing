@@ -58,6 +58,7 @@ func (tv *TreeView) updateLayout() {
 	if tv.treeHidden {
 		tv.tree.SetSize(0, tv.height)
 		tv.log.SetSize(tv.width, tv.height)
+
 		return
 	}
 
@@ -157,11 +158,13 @@ func (tv *TreeView) View() string {
 		Padding(0, 1)
 
 	var help string
-	if tv.focus == FocusTree {
+
+	switch {
+	case tv.focus == FocusTree:
 		help = helpStyle.Render("j/k: select | Enter: view logs | t: panel mode | q: quit")
-	} else if tv.treeHidden {
+	case tv.treeHidden:
 		help = helpStyle.Render("j/k: scroll | f: show tree | Esc: back to tree | t: panel mode | q: quit")
-	} else {
+	default:
 		help = helpStyle.Render("j/k: scroll | f: fullscreen | Esc: back to tree | t: panel mode | q: quit")
 	}
 

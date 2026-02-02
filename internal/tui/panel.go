@@ -153,11 +153,11 @@ func (r *Renderer) renderEmptyPanel(width, height int) string {
 
 	// Build lines with exact width.
 	emptyLine := strings.Repeat(" ", innerWidth)
-	var lines []string
+	lines := make([]string, 0, innerHeight)
 
 	// Calculate vertical centering.
 	topPad := (innerHeight - 1) / 2
-	for i := 0; i < topPad; i++ {
+	for range topPad {
 		lines = append(lines, emptyLine)
 	}
 
@@ -204,16 +204,12 @@ func (r *Renderer) renderHeader(sess *session.Session, width int) string {
 	return r.styles.HeaderStyle.Render(content)
 }
 
-func (r *Renderer) renderBody(sess *session.Session, width, height, scrollPos int) string {
-	body, _ := r.renderBodyWithInfo(sess, width, height, scrollPos)
-	return body
-}
-
 func (r *Renderer) renderBodyWithInfo(sess *session.Session, width, height, scrollPos int) (string, int) {
 	if len(sess.Messages) == 0 {
 		emptyLine := r.styles.EmptyStyle.Render("No messages yet...")
 		// Pad to fixed width using runewidth.
 		padded := padToWidth(emptyLine, width)
+
 		return padded, 0
 	}
 
@@ -327,9 +323,10 @@ func (r *Renderer) renderScrollbar(height, totalLines, visibleLines, scrollPos i
 	// If all content fits, show empty track.
 	if totalLines <= visibleLines {
 		var lines []string
-		for i := 0; i < height; i++ {
+		for range height {
 			lines = append(lines, scrollbarStyle.Render("│"))
 		}
+
 		return strings.Join(lines, "\n")
 	}
 
@@ -361,7 +358,7 @@ func (r *Renderer) renderScrollbar(height, totalLines, visibleLines, scrollPos i
 	}
 
 	var lines []string
-	for i := 0; i < height; i++ {
+	for i := range height {
 		if i >= thumbPos && i < thumbPos+thumbHeight {
 			lines = append(lines, thumbStyle.Render("┃"))
 		} else {
@@ -391,11 +388,12 @@ func (r *Renderer) renderContentBlock(block parser.ContentBlock, width int, msgT
 		if runewidth.StringWidth(text) > maxWidth {
 			return runewidth.Truncate(text, maxWidth, "")
 		}
+
 		return text
 	}
 
 	// Handle user messages.
-	if msgType == "user" {
+	if msgType == "user" { //nolint:nestif // user message handling has necessary nested conditions
 		if block.Type == "text" && block.Text != "" {
 			label := r.styles.LabelStyle.Render("[USER] ")
 			labelWidth := lipgloss.Width(label)
@@ -569,10 +567,10 @@ func wrapText(text string, width int) []string {
 func findBreakPoint(text string, width int) int {
 	// Build a slice of (bytePos, runeWidth) for each rune.
 	type runeInfo struct {
-		bytePos   int
-		endByte   int
-		cumWidth  int
-		isSpace   bool
+		bytePos  int
+		endByte  int
+		cumWidth int
+		isSpace  bool
 	}
 
 	runes := make([]runeInfo, 0, len(text))
@@ -603,6 +601,7 @@ func findBreakPoint(text string, width int) int {
 			} else {
 				breakRuneIdx = 0
 			}
+
 			break
 		}
 	}

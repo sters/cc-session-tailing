@@ -58,6 +58,7 @@ func (t *SessionTree) SetSessionTree(nodes []*session.Node) {
 		for i, item := range t.items {
 			if item.Session.ID == selectedSessionID {
 				t.selected = i
+
 				return
 			}
 		}
