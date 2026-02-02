@@ -157,17 +157,33 @@ func (m *Manager) getOldestPanel() int {
 	return oldestPanel
 }
 
-// GetPanelSessions returns sessions for each panel.
+// GetPanelSessions returns sessions for each panel, sorted by LastUpdate (newest first).
 func (m *Manager) GetPanelSessions() []*Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	// Collect all assigned sessions.
+	var assigned []*Session
+	for _, sessionID := range m.panelAssign {
+		if s, ok := m.sessions[sessionID]; ok {
+			assigned = append(assigned, s)
+		}
+	}
+
+	// Sort by LastUpdate descending (newest first).
+	for i := range len(assigned) - 1 {
+		for j := i + 1; j < len(assigned); j++ {
+			if assigned[j].LastUpdate.After(assigned[i].LastUpdate) {
+				assigned[i], assigned[j] = assigned[j], assigned[i]
+			}
+		}
+	}
+
+	// Fill result with sorted sessions, padding with nil if needed.
 	result := make([]*Session, m.panels)
 	for i := range m.panels {
-		if sessionID, ok := m.panelAssign[i]; ok {
-			if s, ok := m.sessions[sessionID]; ok {
-				result[i] = s
-			}
+		if i < len(assigned) {
+			result[i] = assigned[i]
 		}
 	}
 
