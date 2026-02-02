@@ -35,8 +35,7 @@ func NewStyles() *Styles {
 		HeaderStyle: lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("212")).
-			Background(lipgloss.Color("235")).
-			Padding(0, 1),
+			Background(lipgloss.Color("235")),
 		ThinkStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243")).
 			Italic(true),
@@ -98,13 +97,40 @@ func (r *Renderer) RenderPanel(sess *session.Session, width, height, scrollPos i
 	// Render scrollbar.
 	scrollbar := r.renderScrollbar(bodyHeight, totalLines, bodyHeight, scrollPos)
 
-	// Combine body with scrollbar.
-	bodyWithScrollbar := lipgloss.JoinHorizontal(lipgloss.Top, body, scrollbar)
+	// Combine body lines with scrollbar lines manually for exact width control.
+	bodyLines := strings.Split(body, "\n")
+	scrollbarLines := strings.Split(scrollbar, "\n")
+
+	var combinedLines []string
+	for i := 0; i < len(bodyLines) || i < len(scrollbarLines); i++ {
+		bodyLine := ""
+		scrollLine := ""
+		if i < len(bodyLines) {
+			bodyLine = bodyLines[i]
+		}
+		if i < len(scrollbarLines) {
+			scrollLine = scrollbarLines[i]
+		}
+		// Ensure body line is exactly bodyWidth.
+		bodyLine = padToWidth(bodyLine, bodyWidth)
+		combinedLines = append(combinedLines, bodyLine+scrollLine)
+	}
 
 	// Combine header and body.
-	content := lipgloss.JoinVertical(lipgloss.Left, header, bodyWithScrollbar)
+	allLines := []string{header}
+	allLines = append(allLines, combinedLines...)
 
-	return r.styles.PanelBorder.Width(innerWidth).Height(innerHeight).Render(content)
+	// Ensure we have exactly innerHeight lines.
+	for len(allLines) < innerHeight {
+		allLines = append(allLines, strings.Repeat(" ", innerWidth))
+	}
+	if len(allLines) > innerHeight {
+		allLines = allLines[:innerHeight]
+	}
+
+	content := strings.Join(allLines, "\n")
+
+	return r.styles.PanelBorder.Render(content)
 }
 
 func (r *Renderer) renderEmptyPanel(width, height int) string {
@@ -115,26 +141,67 @@ func (r *Renderer) renderEmptyPanel(width, height int) string {
 		return ""
 	}
 
-	content := r.styles.EmptyStyle.Render("Waiting for session...")
+	// Build centered content manually with exact width.
+	text := "Waiting for session..."
+	textWidth := runewidth.StringWidth(text)
 
-	return r.styles.PanelBorder.Width(innerWidth).Height(innerHeight).Render(
-		lipgloss.Place(innerWidth, innerHeight, lipgloss.Center, lipgloss.Center, content),
-	)
+	// Calculate padding for centering.
+	leftPad := (innerWidth - textWidth) / 2
+	if leftPad < 0 {
+		leftPad = 0
+	}
+
+	// Build lines with exact width.
+	emptyLine := strings.Repeat(" ", innerWidth)
+	var lines []string
+
+	// Calculate vertical centering.
+	topPad := (innerHeight - 1) / 2
+	for i := 0; i < topPad; i++ {
+		lines = append(lines, emptyLine)
+	}
+
+	// Add centered text line.
+	centeredLine := strings.Repeat(" ", leftPad) + r.styles.EmptyStyle.Render(text)
+	centeredLine = padToWidth(centeredLine, innerWidth)
+	lines = append(lines, centeredLine)
+
+	// Fill remaining lines.
+	for len(lines) < innerHeight {
+		lines = append(lines, emptyLine)
+	}
+
+	content := strings.Join(lines, "\n")
+
+	return r.styles.PanelBorder.Render(content)
 }
 
 func (r *Renderer) renderHeader(sess *session.Session, width int) string {
-	// Shorten session ID if needed.
-	id := sess.ID
-	if runewidth.StringWidth(id) > width-4 {
-		id = runewidth.Truncate(id, width-7, "...")
-	}
-
 	prefix := ""
 	if sess.IsSubagent {
 		prefix = "[SUB] "
 	}
 
-	return r.styles.HeaderStyle.Width(width).Render(prefix + id)
+	// Calculate available width for ID (with 1 space padding on each side).
+	availableWidth := width - 2 - runewidth.StringWidth(prefix)
+	if availableWidth < 3 {
+		availableWidth = 3
+	}
+
+	// Shorten session ID if needed.
+	id := sess.ID
+	if runewidth.StringWidth(id) > availableWidth {
+		id = runewidth.Truncate(id, availableWidth-3, "...")
+	}
+
+	// Build content and pad to exact width.
+	content := " " + prefix + id
+	contentWidth := runewidth.StringWidth(content)
+	if contentWidth < width {
+		content += strings.Repeat(" ", width-contentWidth)
+	}
+
+	return r.styles.HeaderStyle.Render(content)
 }
 
 func (r *Renderer) renderBody(sess *session.Session, width, height, scrollPos int) string {
@@ -145,8 +212,8 @@ func (r *Renderer) renderBody(sess *session.Session, width, height, scrollPos in
 func (r *Renderer) renderBodyWithInfo(sess *session.Session, width, height, scrollPos int) (string, int) {
 	if len(sess.Messages) == 0 {
 		emptyLine := r.styles.EmptyStyle.Render("No messages yet...")
-		// Pad to fixed width.
-		padded := lipgloss.NewStyle().Width(width).Render(emptyLine)
+		// Pad to fixed width using runewidth.
+		padded := padToWidth(emptyLine, width)
 		return padded, 0
 	}
 
@@ -188,15 +255,68 @@ func (r *Renderer) renderBodyWithInfo(sess *session.Session, width, height, scro
 		startPos = 0
 	}
 
-	// Extract visible lines and pad each to fixed width.
+	// Extract visible lines and pad each to fixed width using runewidth.
 	visibleLines := lines[startPos:endPos]
 	paddedLines := make([]string, len(visibleLines))
-	lineStyle := lipgloss.NewStyle().Width(width)
 	for i, line := range visibleLines {
-		paddedLines[i] = lineStyle.Render(line)
+		paddedLines[i] = padToWidth(line, width)
 	}
 
 	return strings.Join(paddedLines, "\n"), totalLines
+}
+
+// padToWidth pads a string to exact width.
+// Uses lipgloss.Width to correctly handle ANSI escape sequences.
+func padToWidth(s string, width int) string {
+	currentWidth := lipgloss.Width(s)
+	if currentWidth > width {
+		// Need to truncate. Handle ANSI escape sequences.
+		s = truncateWithANSI(s, width)
+		currentWidth = lipgloss.Width(s)
+	}
+	if currentWidth < width {
+		return s + strings.Repeat(" ", width-currentWidth)
+	}
+
+	return s
+}
+
+// truncateWithANSI truncates a string with ANSI escape sequences to fit within width.
+func truncateWithANSI(s string, width int) string {
+	var result strings.Builder
+	currentWidth := 0
+	inEscape := false
+
+	for _, r := range s {
+		if r == '\x1b' {
+			inEscape = true
+			result.WriteRune(r)
+
+			continue
+		}
+
+		if inEscape {
+			result.WriteRune(r)
+			// End of escape sequence.
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				inEscape = false
+			}
+
+			continue
+		}
+
+		rw := runewidth.RuneWidth(r)
+		if currentWidth+rw > width {
+			break
+		}
+		result.WriteRune(r)
+		currentWidth += rw
+	}
+
+	// Reset any open ANSI sequences.
+	result.WriteString("\x1b[0m")
+
+	return result.String()
 }
 
 // renderScrollbar renders a scrollbar indicator.
@@ -266,16 +386,31 @@ func (r *Renderer) renderMessage(msg parser.Message, width int) []string {
 func (r *Renderer) renderContentBlock(block parser.ContentBlock, width int, msgType string) []string {
 	var lines []string
 
+	// Helper to ensure line fits within width (truncate before style application).
+	ensureWidth := func(text string, maxWidth int) string {
+		if runewidth.StringWidth(text) > maxWidth {
+			return runewidth.Truncate(text, maxWidth, "")
+		}
+		return text
+	}
+
 	// Handle user messages.
 	if msgType == "user" {
 		if block.Type == "text" && block.Text != "" {
 			label := r.styles.LabelStyle.Render("[USER] ")
-			wrapped := wrapText(block.Text, width-7)
+			labelWidth := lipgloss.Width(label)
+			indent := strings.Repeat(" ", labelWidth)
+			contentWidth := width - labelWidth
+			if contentWidth < 1 {
+				contentWidth = 1
+			}
+			wrapped := wrapText(block.Text, contentWidth)
 			for i, line := range wrapped {
+				line = ensureWidth(line, contentWidth)
 				if i == 0 {
 					lines = append(lines, label+r.styles.UserStyle.Render(line))
 				} else {
-					lines = append(lines, "       "+r.styles.UserStyle.Render(line))
+					lines = append(lines, indent+r.styles.UserStyle.Render(line))
 				}
 			}
 		}
@@ -291,40 +426,66 @@ func (r *Renderer) renderContentBlock(block parser.ContentBlock, width int, msgT
 		}
 		if text != "" {
 			label := r.styles.LabelStyle.Render("[THINK] ")
-			content := r.styles.ThinkStyle.Render(truncateText(text, width-8))
+			labelWidth := lipgloss.Width(label)
+			contentWidth := width - labelWidth
+			if contentWidth < 1 {
+				contentWidth = 1
+			}
+			content := r.styles.ThinkStyle.Render(truncateText(text, contentWidth))
 			lines = append(lines, label+content)
 		}
 
 	case "text":
 		if block.Text != "" {
 			label := r.styles.LabelStyle.Render("[TEXT] ")
-			wrapped := wrapText(block.Text, width-7)
+			labelWidth := lipgloss.Width(label)
+			indent := strings.Repeat(" ", labelWidth)
+			contentWidth := width - labelWidth
+			if contentWidth < 1 {
+				contentWidth = 1
+			}
+			wrapped := wrapText(block.Text, contentWidth)
 			for i, line := range wrapped {
+				line = ensureWidth(line, contentWidth)
 				if i == 0 {
 					lines = append(lines, label+r.styles.TextStyle.Render(line))
 				} else {
-					lines = append(lines, "       "+r.styles.TextStyle.Render(line))
+					lines = append(lines, indent+r.styles.TextStyle.Render(line))
 				}
 			}
 		}
 
 	case "tool_use":
 		label := r.styles.LabelStyle.Render("[TOOL] ")
-		toolName := r.styles.ToolStyle.Render(block.Name)
+		labelWidth := lipgloss.Width(label)
+		indent := strings.Repeat(" ", labelWidth)
+		contentWidth := width - labelWidth
+		if contentWidth < 1 {
+			contentWidth = 1
+		}
+		// Truncate tool name if needed.
+		toolNameTrunc := truncateText(block.Name, contentWidth)
+		toolName := r.styles.ToolStyle.Render(toolNameTrunc)
 		lines = append(lines, label+toolName)
 
 		// Show tool input.
 		if block.Input != nil {
-			inputStr := formatToolInput(block.Input, width-7)
+			inputStr := formatToolInput(block.Input, contentWidth)
 			for _, line := range inputStr {
-				lines = append(lines, "       "+r.styles.ToolInputStyle.Render(line))
+				line = ensureWidth(line, contentWidth)
+				lines = append(lines, indent+r.styles.ToolInputStyle.Render(line))
 			}
 		}
 
 	case "tool_result":
 		label := r.styles.LabelStyle.Render("[RESULT] ")
+		labelWidth := lipgloss.Width(label)
+		contentWidth := width - labelWidth
+		if contentWidth < 1 {
+			contentWidth = 1
+		}
 		if block.Text != "" {
-			content := truncateText(block.Text, width-9)
+			content := truncateText(block.Text, contentWidth)
 			lines = append(lines, label+r.styles.TextStyle.Render(content))
 		}
 	}
@@ -333,15 +494,32 @@ func (r *Renderer) renderContentBlock(block parser.ContentBlock, width int, msgT
 }
 
 func truncateText(text string, maxWidth int) string {
-	// Remove newlines and truncate.
-	text = strings.ReplaceAll(text, "\n", " ")
-	text = strings.ReplaceAll(text, "\r", "")
-
-	if runewidth.StringWidth(text) > maxWidth {
-		return runewidth.Truncate(text, maxWidth-3, "...")
+	if maxWidth < 4 {
+		maxWidth = 4
 	}
 
-	return text
+	// Remove newlines and tabs, then truncate.
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = strings.ReplaceAll(text, "\r", "")
+	text = strings.ReplaceAll(text, "\t", " ")
+
+	if runewidth.StringWidth(text) <= maxWidth {
+		return text
+	}
+
+	// Truncate with "..." suffix, ensuring result fits in maxWidth.
+	truncated := runewidth.Truncate(text, maxWidth, "...")
+
+	// Double-check: if still over maxWidth, truncate more aggressively.
+	for runewidth.StringWidth(truncated) > maxWidth {
+		runes := []rune(strings.TrimSuffix(truncated, "..."))
+		if len(runes) <= 1 {
+			return "..."
+		}
+		truncated = string(runes[:len(runes)-1]) + "..."
+	}
+
+	return truncated
 }
 
 func wrapText(text string, width int) []string {
@@ -363,10 +541,23 @@ func wrapText(text string, width int) []string {
 		for runewidth.StringWidth(para) > width {
 			// Find a good break point.
 			breakAt := findBreakPoint(para, width)
-			lines = append(lines, para[:breakAt])
+			if breakAt <= 0 {
+				// Safety: avoid infinite loop.
+				breakAt = 1
+			}
+			line := para[:breakAt]
+			// Double-check: ensure line fits in width.
+			if runewidth.StringWidth(line) > width {
+				line = runewidth.Truncate(line, width, "")
+			}
+			lines = append(lines, line)
 			para = strings.TrimLeft(para[breakAt:], " ")
 		}
 		if para != "" {
+			// Final check on remaining text.
+			if runewidth.StringWidth(para) > width {
+				para = runewidth.Truncate(para, width, "")
+			}
 			lines = append(lines, para)
 		}
 	}
@@ -376,29 +567,59 @@ func wrapText(text string, width int) []string {
 
 // findBreakPoint finds a good position to break text at the given width.
 func findBreakPoint(text string, width int) int {
-	// First, find the byte position that corresponds to the width.
+	// Build a slice of (bytePos, runeWidth) for each rune.
+	type runeInfo struct {
+		bytePos   int
+		endByte   int
+		cumWidth  int
+		isSpace   bool
+	}
+
+	runes := make([]runeInfo, 0, len(text))
 	currentWidth := 0
-	bytePos := 0
 
 	for i, r := range text {
 		rw := runewidth.RuneWidth(r)
-		if currentWidth+rw > width {
-			bytePos = i
+		endByte := i + len(string(r))
+		runes = append(runes, runeInfo{
+			bytePos:  i,
+			endByte:  endByte,
+			cumWidth: currentWidth + rw,
+			isSpace:  r == ' ',
+		})
+		currentWidth += rw
+	}
 
+	if len(runes) == 0 {
+		return 0
+	}
+
+	// Find the last rune that fits within width.
+	breakRuneIdx := len(runes) - 1
+	for i, info := range runes {
+		if info.cumWidth > width {
+			if i > 0 {
+				breakRuneIdx = i - 1
+			} else {
+				breakRuneIdx = 0
+			}
 			break
 		}
-		currentWidth += rw
-		bytePos = i + len(string(r))
 	}
 
-	// Try to find a space to break at.
-	for i := bytePos; i > 0; i-- {
-		if text[i] == ' ' {
-			return i
+	// Try to find a space to break at (search backwards from breakRuneIdx).
+	for i := breakRuneIdx; i >= 0; i-- {
+		if runes[i].isSpace {
+			return runes[i].bytePos
 		}
 	}
 
-	return bytePos
+	// No space found, break at the calculated position.
+	if breakRuneIdx < len(runes) {
+		return runes[breakRuneIdx].endByte
+	}
+
+	return len(text)
 }
 
 // formatToolInput formats tool input for display.
@@ -411,6 +632,9 @@ func formatToolInput(input any, maxWidth int) []string {
 	inputMap, ok := input.(map[string]any)
 	if !ok {
 		str := fmt.Sprintf("%v", input)
+		// Replace newlines first, then truncate.
+		str = strings.ReplaceAll(str, "\n", "\\n")
+		str = strings.ReplaceAll(str, "\r", "")
 
 		return []string{truncateText(str, maxWidth)}
 	}
@@ -428,14 +652,9 @@ func formatToolInput(input any, maxWidth int) []string {
 		var valueStr string
 		switch v := value.(type) {
 		case string:
-			// Truncate long strings.
-			if len(v) > 50 {
-				valueStr = v[:47] + "..."
-			} else {
-				valueStr = v
-			}
-			// Remove newlines for display.
-			valueStr = strings.ReplaceAll(valueStr, "\n", "\\n")
+			// Replace newlines for display.
+			valueStr = strings.ReplaceAll(v, "\n", "\\n")
+			valueStr = strings.ReplaceAll(valueStr, "\r", "")
 		default:
 			jsonBytes, err := json.Marshal(v)
 			if err != nil {
@@ -443,11 +662,9 @@ func formatToolInput(input any, maxWidth int) []string {
 			} else {
 				valueStr = string(jsonBytes)
 			}
-			if len(valueStr) > 50 {
-				valueStr = valueStr[:47] + "..."
-			}
 		}
 
+		// Format as "key: value" and truncate to maxWidth.
 		line := fmt.Sprintf("%s: %s", key, valueStr)
 		lines = append(lines, truncateText(line, maxWidth))
 	}
