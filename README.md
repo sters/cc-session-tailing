@@ -9,10 +9,12 @@ A real-time TUI (Terminal User Interface) viewer for [Claude Code](https://docs.
 ## Features
 
 - **Real-time Monitoring**: Watch Claude Code session logs as they happen
-- **Multi-panel Display**: View multiple sessions side-by-side (configurable panel count)
-- **LRU Panel Assignment**: Automatically manages panel allocation using Least Recently Used strategy
+- **Multi-panel Display**: View multiple sessions side-by-side (1-5 panels, dynamically adjustable)
+- **LRU Panel Assignment**: Most recently updated session always appears in the leftmost panel
+- **Tree View Mode**: Hierarchical view showing parent-child session relationships
 - **Message Type Highlighting**: Different colors for thinking, text, tool usage, and user messages
-- **Subagent Support**: Displays both main sessions and subagent sessions
+- **Subagent Support**: Displays both main sessions and subagent sessions with hierarchy
+- **Scrollbar**: Visual indicator for scroll position within each panel
 - **Keyboard Navigation**: Scroll through session history with vim-style keybindings
 
 ## Installation
@@ -67,13 +69,17 @@ cc-session-tailing -p 6 -d ~/projects/my-app
 | `q` / `Ctrl+C` | Quit |
 | `j` / `Down` | Scroll down (show newer messages) |
 | `k` / `Up` | Scroll up (show older messages) |
+| `p` | Cycle panel count (1 → 2 → 3 → 4 → 5 → 1) |
+| `t` | Toggle between panel mode and tree view mode |
+| `Enter` | (Tree view) Select session to view |
 
 ## How It Works
 
 1. The tool monitors the Claude Code session directory (`~/.claude/projects/<project-path>/`)
 2. When Claude Code is active, it writes session logs as JSONL files
 3. This tool watches for file changes and parses new messages in real-time
-4. Sessions are displayed in panels, with the most recently active sessions taking priority
+4. Sessions are displayed in panels, sorted by last update time (newest on the left)
+5. When panel count increases, unassigned sessions are automatically loaded into new panels
 
 ### Message Types
 
