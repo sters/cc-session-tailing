@@ -19,7 +19,7 @@ type Model struct {
 	renderer  *Renderer
 	width     int
 	height    int
-	scrollPos []int // scroll position for each panel
+	scrollPos []int // scroll position for each panel (-1 = follow bottom, >= 0 = fixed start line)
 	ready     bool
 	viewMode  ViewMode
 	treeView  *TreeView
@@ -28,12 +28,16 @@ type Model struct {
 // NewModel creates a new TUI model with panel mode.
 func NewModel(manager *session.Manager, w *watcher.Watcher) *Model {
 	panels := manager.PanelCount()
+	scrollPos := make([]int, panels)
+	for i := range scrollPos {
+		scrollPos[i] = -1 // Follow mode by default.
+	}
 
 	return &Model{
 		manager:   manager,
 		watcher:   w,
 		renderer:  NewRenderer(NewStyles()),
-		scrollPos: make([]int, panels),
+		scrollPos: scrollPos,
 		viewMode:  ViewModePanel,
 		treeView:  NewTreeView(manager),
 	}
@@ -42,12 +46,16 @@ func NewModel(manager *session.Manager, w *watcher.Watcher) *Model {
 // NewModelWithMode creates a new TUI model with the specified view mode.
 func NewModelWithMode(manager *session.Manager, w *watcher.Watcher, mode ViewMode) *Model {
 	panels := manager.PanelCount()
+	scrollPos := make([]int, panels)
+	for i := range scrollPos {
+		scrollPos[i] = -1 // Follow mode by default.
+	}
 
 	return &Model{
 		manager:   manager,
 		watcher:   w,
 		renderer:  NewRenderer(NewStyles()),
-		scrollPos: make([]int, panels),
+		scrollPos: scrollPos,
 		viewMode:  mode,
 		treeView:  NewTreeView(manager),
 	}
@@ -104,11 +112,15 @@ func (m *Model) SetViewMode(mode ViewMode) {
 }
 
 // ToggleViewMode toggles between tree and panel modes.
-func (m *Model) ToggleViewMode() {
+// Returns a command if there are highlights to clear.
+func (m *Model) ToggleViewMode() tea.Cmd {
 	if m.viewMode == ViewModeTree {
 		m.viewMode = ViewModePanel
-	} else {
-		m.viewMode = ViewModeTree
-		m.treeView.RefreshSessions()
+
+		return nil
 	}
+
+	m.viewMode = ViewModeTree
+
+	return m.treeView.RefreshSessions()
 }

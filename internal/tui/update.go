@@ -12,9 +12,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "t":
-			m.ToggleViewMode()
+			cmd := m.ToggleViewMode()
 
-			return m, nil
+			return m, cmd
 		}
 
 		// Mode-specific key handling.
@@ -33,18 +33,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Initialize tree view on first ready.
 		if !wasReady && m.viewMode == ViewModeTree {
-			m.treeView.RefreshSessions()
+			cmd := m.treeView.RefreshSessions()
+
+			return m, cmd
 		}
 
 	case FileUpdateMsg:
 		m.processFileUpdate(msg.Event)
 		// Refresh tree view if in tree mode.
 		if m.viewMode == ViewModeTree {
-			m.treeView.RefreshSessions()
+			highlightCmd := m.treeView.RefreshSessions()
 			m.treeView.RefreshLog()
+
+			return m, tea.Batch(waitForFileEvents(m.watcher), highlightCmd)
 		}
 
 		return m, waitForFileEvents(m.watcher)
+
+	case HighlightClearMsg:
+		// Clear highlights in tree view.
+		if m.viewMode == ViewModeTree {
+			m.treeView.ClearHighlights()
+		}
+
+		return m, nil
 	}
 
 	return m, nil
@@ -76,22 +88,52 @@ func (m *Model) cyclePanelCount() {
 		next = 1
 	}
 	m.manager.SetPanelCount(next)
-	// Resize scrollPos array.
+	// Resize scrollPos array with -1 (follow bottom mode).
 	m.scrollPos = make([]int, next)
+	for i := range m.scrollPos {
+		m.scrollPos[i] = -1
+	}
 }
 
 func (m *Model) scrollDown() {
-	// Scroll down = show newer content = decrease scrollPos
+	// Scroll down = show newer content.
+	// If in fixed mode (scrollPos >= 0), move start line forward.
+	// If we reach the bottom, switch to follow mode (scrollPos = -1).
+	sessions := m.manager.GetPanelSessions()
+	panels := m.manager.PanelCount()
+	panelHeight := m.height - 2 - 2 - 1 // total height - help line - border - header
+
 	for i := range m.scrollPos {
-		if m.scrollPos[i] > 0 {
-			m.scrollPos[i]--
+		if i >= panels {
+			continue
+		}
+		if m.scrollPos[i] < 0 {
+			// Already in follow mode.
+			continue
+		}
+		sess := sessions[i]
+		if sess == nil {
+			continue
+		}
+		// Estimate total lines.
+		totalLines := len(sess.Messages) * 3
+		maxStartLine := totalLines - panelHeight
+		if maxStartLine < 0 {
+			maxStartLine = 0
+		}
+
+		m.scrollPos[i]++
+		// If we've scrolled past the bottom, switch to follow mode.
+		if m.scrollPos[i] >= maxStartLine {
+			m.scrollPos[i] = -1
 		}
 	}
 }
 
 func (m *Model) scrollUp() {
-	// Scroll up = show older content = increase scrollPos
-	// Get sessions to calculate max scroll for each panel.
+	// Scroll up = show older content.
+	// If in follow mode (scrollPos = -1), calculate current start line and fix it.
+	// Then move start line backward.
 	sessions := m.manager.GetPanelSessions()
 	panels := m.manager.PanelCount()
 	panelHeight := m.height - 2 - 2 - 1 // total height - help line - border - header
@@ -104,14 +146,21 @@ func (m *Model) scrollUp() {
 		if sess == nil {
 			continue
 		}
-		// Estimate total lines (rough estimate based on message count).
+		// Estimate total lines.
 		totalLines := len(sess.Messages) * 3
-		maxScroll := totalLines - panelHeight
-		if maxScroll < 0 {
-			maxScroll = 0
+		maxStartLine := totalLines - panelHeight
+		if maxStartLine < 0 {
+			maxStartLine = 0
 		}
-		if m.scrollPos[i] < maxScroll {
-			m.scrollPos[i]++
+
+		if m.scrollPos[i] < 0 {
+			// Currently in follow mode, switch to fixed mode at current position.
+			m.scrollPos[i] = maxStartLine
+		}
+
+		// Move start line backward (show older content).
+		if m.scrollPos[i] > 0 {
+			m.scrollPos[i]--
 		}
 	}
 }

@@ -219,6 +219,9 @@ func (l *LogViewport) updateContent() {
 		return
 	}
 
+	// Check if we're at the bottom before updating content.
+	wasAtBottom := l.viewport.AtBottom()
+
 	contentWidth := l.width - 5 // border (2) + scrollbar (1) + padding (2)
 
 	var lines []string
@@ -229,7 +232,11 @@ func (l *LogViewport) updateContent() {
 
 	content := strings.Join(lines, "\n")
 	l.viewport.SetContent(content)
-	l.viewport.GotoBottom()
+
+	// Only scroll to bottom if we were already at the bottom.
+	if wasAtBottom {
+		l.viewport.GotoBottom()
+	}
 }
 
 func (l *LogViewport) renderMessage(msg parser.Message, width int) []string {

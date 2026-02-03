@@ -1,11 +1,19 @@
 package tui
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sters/cc-session-tailing/internal/session"
 	"github.com/sters/cc-session-tailing/internal/tui/components"
 )
+
+// HighlightClearMsg is sent when highlights should be cleared.
+type HighlightClearMsg struct{}
+
+// highlightDuration is how long highlights stay visible.
+const highlightDuration = 500 * time.Millisecond
 
 // Focus represents which component has focus in tree view.
 type Focus int
@@ -113,6 +121,11 @@ func (tv *TreeView) Update(msg tea.Msg) tea.Cmd {
 
 			return nil
 		}
+	case "r":
+		// Sort tree by last update time.
+		tv.RefreshSessionsSorted()
+
+		return nil
 	case "j", "down":
 		if tv.focus == FocusTree {
 			tv.tree.MoveDown()
@@ -141,6 +154,11 @@ func (tv *TreeView) Update(msg tea.Msg) tea.Cmd {
 	return tv.log.Update(keyMsg)
 }
 
+// ClearHighlights clears all highlighted sessions.
+func (tv *TreeView) ClearHighlights() {
+	tv.tree.ClearHighlighted()
+}
+
 // View renders the tree view.
 func (tv *TreeView) View() string {
 	var main string
@@ -161,7 +179,7 @@ func (tv *TreeView) View() string {
 
 	switch {
 	case tv.focus == FocusTree:
-		help = helpStyle.Render("j/k: select | Enter: view logs | t: panel mode | q: quit")
+		help = helpStyle.Render("j/k: select | Enter: view logs | r: sort by time | t: panel mode | q: quit")
 	case tv.treeHidden:
 		help = helpStyle.Render("j/k: scroll | f: show tree | Esc: back to tree | t: panel mode | q: quit")
 	default:
@@ -171,8 +189,32 @@ func (tv *TreeView) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, main, help)
 }
 
-// RefreshSessions updates the session tree from the manager.
-func (tv *TreeView) RefreshSessions() {
+// RefreshSessions updates the session tree from the manager without sorting.
+// Returns a command to clear highlights after a delay if there are updates.
+func (tv *TreeView) RefreshSessions() tea.Cmd {
+	// Get recently updated sessions before refreshing.
+	updated := tv.manager.GetRecentlyUpdated()
+
+	// Use preserve-order version (no sorting).
+	nodes := tv.manager.GetSessionTreePreserveOrder()
+	tv.tree.SetSessionTree(nodes)
+	tv.updateLogSession()
+
+	// If there are updated sessions, highlight them.
+	if len(updated) > 0 {
+		tv.tree.SetHighlighted(updated)
+
+		// Return a command to clear highlights after a delay.
+		return tea.Tick(highlightDuration, func(_ time.Time) tea.Msg {
+			return HighlightClearMsg{}
+		})
+	}
+
+	return nil
+}
+
+// RefreshSessionsSorted updates the session tree from the manager with sorting by last update time.
+func (tv *TreeView) RefreshSessionsSorted() {
 	nodes := tv.manager.GetSessionTree()
 	tv.tree.SetSessionTree(nodes)
 	tv.updateLogSession()

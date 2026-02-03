@@ -222,34 +222,12 @@ func (r *Renderer) renderBodyWithInfo(sess *session.Session, width, height, scro
 		lines = append(lines, msgLines...)
 	}
 
-	// Calculate visible window.
-	// scrollPos = 0 means show newest (bottom of content).
-	// scrollPos > 0 means scroll up to see older content.
 	totalLines := len(lines)
 
-	// Clamp scrollPos to valid range.
-	maxScroll := totalLines - height
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if scrollPos > maxScroll {
-		scrollPos = maxScroll
-	}
-
-	// Calculate the end position (newest line to show).
-	endPos := totalLines - scrollPos
-	if endPos < height {
-		endPos = height
-	}
-	if endPos > totalLines {
-		endPos = totalLines
-	}
-
-	// Calculate the start position.
-	startPos := endPos - height
-	if startPos < 0 {
-		startPos = 0
-	}
+	// Calculate visible window.
+	// scrollPos = -1 means follow mode (show newest content at bottom).
+	// scrollPos >= 0 means fixed mode (scrollPos is the start line index).
+	startPos, endPos := calculateVisibleWindow(totalLines, height, scrollPos)
 
 	// Extract visible lines and pad each to fixed width using runewidth.
 	visibleLines := lines[startPos:endPos]
@@ -259,6 +237,28 @@ func (r *Renderer) renderBodyWithInfo(sess *session.Session, width, height, scro
 	}
 
 	return strings.Join(paddedLines, "\n"), totalLines
+}
+
+// calculateVisibleWindow calculates the start and end positions for visible content.
+// scrollPos = -1 means follow mode, >= 0 means fixed start line.
+func calculateVisibleWindow(totalLines, height, scrollPos int) (int, int) {
+	var startPos, endPos int
+
+	if scrollPos < 0 {
+		// Follow mode: show the newest content.
+		endPos = totalLines
+		startPos = endPos - height
+	} else {
+		// Fixed mode: start from the specified line.
+		startPos = scrollPos
+		endPos = startPos + height
+	}
+
+	// Clamp to valid range.
+	startPos = max(0, min(startPos, totalLines-height))
+	endPos = max(startPos, min(endPos, totalLines))
+
+	return startPos, endPos
 }
 
 // padToWidth pads a string to exact width.
@@ -316,6 +316,7 @@ func truncateWithANSI(s string, width int) string {
 }
 
 // renderScrollbar renders a scrollbar indicator.
+// scrollPos: -1 = follow mode (at bottom), >= 0 = fixed start line.
 func (r *Renderer) renderScrollbar(height, totalLines, visibleLines, scrollPos int) string {
 	scrollbarStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	thumbStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
@@ -334,19 +335,23 @@ func (r *Renderer) renderScrollbar(height, totalLines, visibleLines, scrollPos i
 	thumbHeight := max(1, height*visibleLines/totalLines)
 	scrollableRange := totalLines - visibleLines
 
-	// Clamp scrollPos to valid range.
-	if scrollPos > scrollableRange {
-		scrollPos = scrollableRange
-	}
+	// Calculate the actual start line for scrollbar position.
+	var startLine int
 	if scrollPos < 0 {
-		scrollPos = 0
+		// Follow mode: at the bottom.
+		startLine = scrollableRange
+	} else {
+		startLine = scrollPos
+		if startLine > scrollableRange {
+			startLine = scrollableRange
+		}
 	}
 
 	thumbPos := 0
 	if scrollableRange > 0 {
-		// scrollPos=0 means at bottom, scrollPos=scrollableRange means at top
+		// startLine=0 means at top, startLine=scrollableRange means at bottom
 		// We want thumbPos=0 when at top, thumbPos=height-thumbHeight when at bottom
-		thumbPos = int(float64(scrollableRange-scrollPos) / float64(scrollableRange) * float64(height-thumbHeight))
+		thumbPos = int(float64(startLine) / float64(scrollableRange) * float64(height-thumbHeight))
 	}
 
 	// Clamp thumbPos to valid range.

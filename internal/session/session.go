@@ -36,8 +36,10 @@ type Manager struct {
 	mu              sync.RWMutex
 	panels          int
 	sessions        map[string]*Session
-	panelAssign     map[int]string // panelIndex -> sessionID
-	excludePatterns []string       // patterns to exclude from display
+	panelAssign     map[int]string  // panelIndex -> sessionID
+	excludePatterns []string        // patterns to exclude from display
+	recentlyUpdated map[string]bool // tracks recently updated session IDs
+	sessionOrder    []string        // maintains insertion order of session IDs
 }
 
 // NewManager creates a new session manager.
@@ -47,6 +49,8 @@ func NewManager(panels int) *Manager {
 		sessions:        make(map[string]*Session),
 		panelAssign:     make(map[int]string),
 		excludePatterns: defaultExcludePatterns,
+		recentlyUpdated: make(map[string]bool),
+		sessionOrder:    make([]string, 0),
 	}
 }
 
@@ -81,6 +85,7 @@ func (m *Manager) GetOrCreateSession(sessionID, path string, isSubagent bool) *S
 		LastUpdate: time.Now(),
 	}
 	m.sessions[sessionID] = s
+	m.sessionOrder = append(m.sessionOrder, sessionID)
 
 	// Assign to a panel
 	m.assignPanel(sessionID)
@@ -109,6 +114,7 @@ func (m *Manager) GetOrCreateSessionWithParent(sessionID, path, parentID string,
 		LastUpdate: time.Now(),
 	}
 	m.sessions[sessionID] = s
+	m.sessionOrder = append(m.sessionOrder, sessionID)
 
 	// Assign to a panel
 	m.assignPanel(sessionID)
@@ -129,6 +135,7 @@ func (m *Manager) UpdateSession(sessionID string, messages []parser.Message, new
 	s.Messages = append(s.Messages, messages...)
 	s.Offset = newOffset
 	s.LastUpdate = time.Now()
+	m.recentlyUpdated[sessionID] = true
 }
 
 // assignPanel assigns a panel to a session using LRU.
@@ -398,4 +405,67 @@ func (m *Manager) GetChildSessions(parentID string) []*Session {
 	}
 
 	return children
+}
+
+// GetSessionTreePreserveOrder returns sessions as a tree structure preserving insertion order.
+// Excluded sessions are filtered out.
+func (m *Manager) GetSessionTreePreserveOrder() []*Node {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Build a map of parent -> children, filtering out excluded sessions.
+	childrenMap := make(map[string][]*Session)
+	var roots []*Session
+
+	// Use sessionOrder to maintain insertion order.
+	for _, sessionID := range m.sessionOrder {
+		s, ok := m.sessions[sessionID]
+		if !ok {
+			continue
+		}
+		if m.shouldExcludeSession(s.ID) {
+			continue
+		}
+		if s.ParentID == "" {
+			roots = append(roots, s)
+		} else {
+			childrenMap[s.ParentID] = append(childrenMap[s.ParentID], s)
+		}
+	}
+
+	// Build tree nodes without sorting.
+	result := make([]*Node, 0, len(roots))
+	for _, root := range roots {
+		node := m.buildNodePreserveOrder(root, childrenMap)
+		result = append(result, node)
+	}
+
+	return result
+}
+
+func (m *Manager) buildNodePreserveOrder(s *Session, childrenMap map[string][]*Session) *Node {
+	node := &Node{
+		Session:  s,
+		Expanded: true,
+	}
+
+	children := childrenMap[s.ID]
+	// No sorting - preserve insertion order.
+	for _, child := range children {
+		childNode := m.buildNodePreserveOrder(child, childrenMap)
+		node.Children = append(node.Children, childNode)
+	}
+
+	return node
+}
+
+// GetRecentlyUpdated returns a copy of the recently updated session IDs and clears the set.
+func (m *Manager) GetRecentlyUpdated() map[string]bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	result := m.recentlyUpdated
+	m.recentlyUpdated = make(map[string]bool)
+
+	return result
 }

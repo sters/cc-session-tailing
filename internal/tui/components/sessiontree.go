@@ -20,19 +20,21 @@ type TreeItem struct {
 
 // SessionTree is a hierarchical session tree display.
 type SessionTree struct {
-	items    []TreeItem
-	nodes    []*session.Node
-	selected int
-	width    int
-	height   int
-	focused  bool
-	offset   int // scroll offset
+	items       []TreeItem
+	nodes       []*session.Node
+	selected    int
+	width       int
+	height      int
+	focused     bool
+	offset      int             // scroll offset
+	highlighted map[string]bool // session IDs that are currently highlighted
 }
 
 // NewSessionTree creates a new session tree.
 func NewSessionTree() *SessionTree {
 	return &SessionTree{
-		focused: true,
+		focused:     true,
+		highlighted: make(map[string]bool),
 	}
 }
 
@@ -180,6 +182,7 @@ func (t *SessionTree) adjustScroll(visibleHeight int) {
 func (t *SessionTree) renderItem(idx int) string {
 	item := t.items[idx]
 	isSelected := idx == t.selected
+	isHighlighted := t.highlighted[item.Session.ID]
 
 	// Build prefix for tree structure.
 	prefix := strings.Repeat("  ", item.Depth)
@@ -211,8 +214,14 @@ func (t *SessionTree) renderItem(idx int) string {
 	msgCount := len(item.Session.Messages)
 	countStr := fmt.Sprintf(" (%d)", msgCount)
 
+	// Update indicator for highlighted sessions.
+	updateIndicator := ""
+	if isHighlighted && !isSelected {
+		updateIndicator = " ●"
+	}
+
 	// Calculate available width.
-	availWidth := t.width - 6 - runewidth.StringWidth(prefix) - runewidth.StringWidth(childIndicator) - runewidth.StringWidth(countStr)
+	availWidth := t.width - 6 - runewidth.StringWidth(prefix) - runewidth.StringWidth(childIndicator) - runewidth.StringWidth(countStr) - runewidth.StringWidth(updateIndicator)
 	if availWidth < 10 {
 		availWidth = 10
 	}
@@ -234,6 +243,17 @@ func (t *SessionTree) renderItem(idx int) string {
 			Width(t.width - 4)
 
 		return selectedStyle.Render(line)
+	}
+
+	if isHighlighted {
+		// Highlighted style - yellow/orange background flash effect.
+		highlightStyle := lipgloss.NewStyle().
+			Background(lipgloss.Color("220")). // Yellow background
+			Foreground(lipgloss.Color("235")). // Dark text
+			Bold(true).
+			Width(t.width - 4)
+
+		return highlightStyle.Render(line + updateIndicator)
 	}
 
 	normalStyle := lipgloss.NewStyle().
@@ -326,4 +346,19 @@ func (t *SessionTree) HasParent() bool {
 	}
 
 	return t.items[t.selected].Depth > 0
+}
+
+// SetHighlighted sets the highlighted session IDs.
+func (t *SessionTree) SetHighlighted(sessionIDs map[string]bool) {
+	t.highlighted = sessionIDs
+}
+
+// ClearHighlighted clears all highlighted session IDs.
+func (t *SessionTree) ClearHighlighted() {
+	t.highlighted = make(map[string]bool)
+}
+
+// HasHighlighted returns whether there are any highlighted sessions.
+func (t *SessionTree) HasHighlighted() bool {
+	return len(t.highlighted) > 0
 }
