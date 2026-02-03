@@ -43,35 +43,55 @@ The tool automatically finds Claude Code session logs in `~/.claude/projects/<pr
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--panels` | `-p` | `4` | Number of panels to display |
+| `--mode` | `-m` | `tree` | View mode: `tree` or `panel` (defaults to `panel` if `-p` is specified) |
+| `--panels` | `-p` | `4` | Number of panels to display (panel mode) |
 | `--project` | `-d` | `.` | Project directory to watch |
 
 ### Examples
 
 ```shell
-# Watch the current directory with 4 panels (default)
+# Watch the current directory in tree mode (default)
 cc-session-tailing
 
-# Watch with 2 panels
+# Watch in panel mode with 2 panels
 cc-session-tailing -p 2
+
+# Explicitly set tree mode
+cc-session-tailing -m tree
 
 # Watch a specific project directory
 cc-session-tailing -d /path/to/your/project
 
 # Combine options
-cc-session-tailing -p 6 -d ~/projects/my-app
+cc-session-tailing -p 5 -d ~/projects/my-app
 ```
 
 ### Keyboard Shortcuts
 
+#### Common
+
 | Key | Action |
 |-----|--------|
 | `q` / `Ctrl+C` | Quit |
+| `t` | Toggle between tree mode and panel mode |
+
+#### Tree Mode
+
+| Key | Action |
+|-----|--------|
+| `j` / `Down` | Move selection down (tree) / Scroll down (log) |
+| `k` / `Up` | Move selection up (tree) / Scroll up (log) |
+| `Enter` | Switch focus to log viewport |
+| `Esc` | Return focus to session tree |
+| `f` | Toggle fullscreen log (when log is focused) |
+
+#### Panel Mode
+
+| Key | Action |
+|-----|--------|
 | `j` / `Down` | Scroll down (show newer messages) |
 | `k` / `Up` | Scroll up (show older messages) |
 | `p` | Cycle panel count (1 → 2 → 3 → 4 → 5 → 1) |
-| `t` | Toggle between panel mode and tree view mode |
-| `Enter` | (Tree view) Select session to view |
 
 ## How It Works
 
@@ -91,7 +111,7 @@ cc-session-tailing -p 6 -d ~/projects/my-app
 
 ## Requirements
 
-- Go 1.22 or later (for building from source)
+- Go 1.24 or later (for building from source)
 - Claude Code must have been used in the target project at least once
 
 ## License
