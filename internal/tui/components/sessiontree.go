@@ -52,6 +52,11 @@ func (t *SessionTree) SetSessionTree(nodes []*session.Node) {
 		selectedSessionID = t.items[t.selected].Session.ID
 	}
 
+	// Preserve current display order if we already have nodes.
+	if len(t.nodes) > 0 {
+		nodes = t.preserveOrder(nodes)
+	}
+
 	t.nodes = nodes
 	t.items = t.flattenTree(nodes, 0)
 
@@ -70,6 +75,75 @@ func (t *SessionTree) SetSessionTree(nodes []*session.Node) {
 	if t.selected >= len(t.items) && len(t.items) > 0 {
 		t.selected = len(t.items) - 1
 	}
+}
+
+// preserveOrder reorders nodes to match the current display order.
+// Existing nodes keep their order, new nodes are appended at the end.
+func (t *SessionTree) preserveOrder(newNodes []*session.Node) []*session.Node {
+	// Build a map of new nodes by session ID.
+	newNodeMap := make(map[string]*session.Node)
+	for _, n := range newNodes {
+		newNodeMap[n.Session.ID] = n
+	}
+
+	// Build result keeping existing order.
+	result := make([]*session.Node, 0, len(newNodes))
+	seen := make(map[string]bool)
+
+	// First, add existing nodes in their current order (with updated data).
+	for _, oldNode := range t.nodes {
+		if newNode, exists := newNodeMap[oldNode.Session.ID]; exists {
+			// Preserve children order recursively.
+			newNode.Children = t.preserveChildOrder(oldNode.Children, newNode.Children)
+			result = append(result, newNode)
+			seen[oldNode.Session.ID] = true
+		}
+	}
+
+	// Then, append any new nodes that weren't in the old tree.
+	for _, n := range newNodes {
+		if !seen[n.Session.ID] {
+			result = append(result, n)
+		}
+	}
+
+	return result
+}
+
+// preserveChildOrder preserves the order of child nodes.
+func (t *SessionTree) preserveChildOrder(oldChildren, newChildren []*session.Node) []*session.Node {
+	if len(oldChildren) == 0 {
+		return newChildren
+	}
+
+	// Build a map of new children by session ID.
+	newChildMap := make(map[string]*session.Node)
+	for _, n := range newChildren {
+		newChildMap[n.Session.ID] = n
+	}
+
+	// Build result keeping existing order.
+	result := make([]*session.Node, 0, len(newChildren))
+	seen := make(map[string]bool)
+
+	// First, add existing children in their current order.
+	for _, oldChild := range oldChildren {
+		if newChild, exists := newChildMap[oldChild.Session.ID]; exists {
+			// Recursively preserve grandchildren order.
+			newChild.Children = t.preserveChildOrder(oldChild.Children, newChild.Children)
+			result = append(result, newChild)
+			seen[oldChild.Session.ID] = true
+		}
+	}
+
+	// Then, append any new children.
+	for _, n := range newChildren {
+		if !seen[n.Session.ID] {
+			result = append(result, n)
+		}
+	}
+
+	return result
 }
 
 // flattenTree converts the tree structure to a flat list for display.
