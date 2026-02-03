@@ -121,6 +121,7 @@ func (m *Model) ToggleViewMode() tea.Cmd {
 	}
 
 	m.viewMode = ViewModeTree
+	m.treeView.RefreshSessionsSortedAndReset()
 
-	return m.treeView.RefreshSessions()
+	return nil
 }

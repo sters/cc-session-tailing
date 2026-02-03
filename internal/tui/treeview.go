@@ -220,6 +220,14 @@ func (tv *TreeView) RefreshSessionsSorted() {
 	tv.updateLogSession()
 }
 
+// RefreshSessionsSortedAndReset updates the session tree with sorting and resets selection to first item.
+func (tv *TreeView) RefreshSessionsSortedAndReset() {
+	nodes := tv.manager.GetSessionTree()
+	tv.tree.SetSessionTree(nodes)
+	tv.tree.ResetSelection()
+	tv.updateLogSession()
+}
+
 // RefreshLog refreshes the log viewport content.
 func (tv *TreeView) RefreshLog() {
 	tv.log.Refresh()

@@ -307,6 +307,12 @@ func (t *SessionTree) MoveToChild() bool {
 	return false
 }
 
+// ResetSelection resets the selection to the first item.
+func (t *SessionTree) ResetSelection() {
+	t.selected = 0
+	t.offset = 0
+}
+
 // MoveToParent moves to the parent of the selected session.
 func (t *SessionTree) MoveToParent() bool {
 	if t.selected < 0 || t.selected >= len(t.items) {
