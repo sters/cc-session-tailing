@@ -33,9 +33,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Initialize tree view on first ready.
 		if !wasReady && m.viewMode == ViewModeTree {
-			cmd := m.treeView.RefreshSessions()
+			m.treeView.RefreshSessionsSortedAndReset()
 
-			return m, cmd
+			return m, nil
 		}
 
 	case FileUpdateMsg:
