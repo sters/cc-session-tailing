@@ -1,11 +1,17 @@
 package session
 
 import (
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/sters/cc-session-tailing/internal/parser"
 )
+
+// DefaultExcludePatterns contains patterns to exclude from display by default.
+var DefaultExcludePatterns = []string{
+	"prompt_suggestion",
+}
 
 // Session represents a single session's state.
 type Session struct {
@@ -27,19 +33,31 @@ type Node struct {
 
 // Manager manages sessions and panel assignments using LRU.
 type Manager struct {
-	mu          sync.RWMutex
-	panels      int
-	sessions    map[string]*Session
-	panelAssign map[int]string // panelIndex -> sessionID
+	mu              sync.RWMutex
+	panels          int
+	sessions        map[string]*Session
+	panelAssign     map[int]string // panelIndex -> sessionID
+	excludePatterns []string       // patterns to exclude from display
 }
 
 // NewManager creates a new session manager.
 func NewManager(panels int) *Manager {
 	return &Manager{
-		panels:      panels,
-		sessions:    make(map[string]*Session),
-		panelAssign: make(map[int]string),
+		panels:          panels,
+		sessions:        make(map[string]*Session),
+		panelAssign:     make(map[int]string),
+		excludePatterns: DefaultExcludePatterns,
 	}
+}
+
+// shouldExcludeSession checks if a session should be excluded from display.
+func (m *Manager) shouldExcludeSession(sessionID string) bool {
+	for _, pattern := range m.excludePatterns {
+		if strings.Contains(sessionID, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetOrCreateSession gets or creates a session.
@@ -114,6 +132,11 @@ func (m *Manager) UpdateSession(sessionID string, messages []parser.Message, new
 
 // assignPanel assigns a panel to a session using LRU.
 func (m *Manager) assignPanel(sessionID string) {
+	// Skip excluded sessions.
+	if m.shouldExcludeSession(sessionID) {
+		return
+	}
+
 	// Check if already assigned
 	for _, sid := range m.panelAssign {
 		if sid == sessionID {
@@ -225,6 +248,7 @@ func (m *Manager) SetPanelCount(count int) {
 }
 
 // fillEmptyPanels assigns unassigned sessions to empty panel slots.
+// Excluded sessions are skipped.
 func (m *Manager) fillEmptyPanels() {
 	// Find which sessions are already assigned.
 	assigned := make(map[string]bool)
@@ -233,9 +257,10 @@ func (m *Manager) fillEmptyPanels() {
 	}
 
 	// Collect unassigned sessions sorted by LastUpdate (newest first).
+	// Skip excluded sessions.
 	var unassigned []*Session
 	for _, s := range m.sessions {
-		if !assigned[s.ID] {
+		if !assigned[s.ID] && !m.shouldExcludeSession(s.ID) {
 			unassigned = append(unassigned, s)
 		}
 	}
@@ -260,12 +285,16 @@ func (m *Manager) fillEmptyPanels() {
 }
 
 // GetAllSessions returns all sessions sorted by last update time (newest first).
+// Excluded sessions are filtered out.
 func (m *Manager) GetAllSessions() []*Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	result := make([]*Session, 0, len(m.sessions))
 	for _, s := range m.sessions {
+		if m.shouldExcludeSession(s.ID) {
+			continue
+		}
 		result = append(result, s)
 	}
 
@@ -282,15 +311,19 @@ func (m *Manager) GetAllSessions() []*Session {
 }
 
 // GetSessionTree returns sessions as a tree structure.
+// Excluded sessions are filtered out.
 func (m *Manager) GetSessionTree() []*Node {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Build a map of parent -> children.
+	// Build a map of parent -> children, filtering out excluded sessions.
 	childrenMap := make(map[string][]*Session)
 	var roots []*Session
 
 	for _, s := range m.sessions {
+		if m.shouldExcludeSession(s.ID) {
+			continue
+		}
 		if s.ParentID == "" {
 			roots = append(roots, s)
 		} else {
@@ -342,13 +375,14 @@ func (m *Manager) buildNode(s *Session, childrenMap map[string][]*Session) *Node
 }
 
 // GetChildSessions returns child sessions of a given session.
+// Excluded sessions are filtered out.
 func (m *Manager) GetChildSessions(parentID string) []*Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	var children []*Session
 	for _, s := range m.sessions {
-		if s.ParentID == parentID {
+		if s.ParentID == parentID && !m.shouldExcludeSession(s.ID) {
 			children = append(children, s)
 		}
 	}
