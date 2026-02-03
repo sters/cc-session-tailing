@@ -8,8 +8,8 @@ import (
 	"github.com/sters/cc-session-tailing/internal/parser"
 )
 
-// DefaultExcludePatterns contains patterns to exclude from display by default.
-var DefaultExcludePatterns = []string{
+// defaultExcludePatterns contains patterns to exclude from display by default.
+var defaultExcludePatterns = []string{ //nolint:gochecknoglobals // package-level config
 	"prompt_suggestion",
 }
 
@@ -46,7 +46,7 @@ func NewManager(panels int) *Manager {
 		panels:          panels,
 		sessions:        make(map[string]*Session),
 		panelAssign:     make(map[int]string),
-		excludePatterns: DefaultExcludePatterns,
+		excludePatterns: defaultExcludePatterns,
 	}
 }
 
@@ -57,6 +57,7 @@ func (m *Manager) shouldExcludeSession(sessionID string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
