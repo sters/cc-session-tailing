@@ -408,6 +408,7 @@ func (m *Manager) GetChildSessions(parentID string) []*Session {
 }
 
 // GetSessionTreePreserveOrder returns sessions as a tree structure preserving insertion order.
+// Sessions are ordered with newest first (reverse insertion order).
 // Excluded sessions are filtered out.
 func (m *Manager) GetSessionTreePreserveOrder() []*Node {
 	m.mu.RLock()
@@ -417,8 +418,9 @@ func (m *Manager) GetSessionTreePreserveOrder() []*Node {
 	childrenMap := make(map[string][]*Session)
 	var roots []*Session
 
-	// Use sessionOrder to maintain insertion order.
-	for _, sessionID := range m.sessionOrder {
+	// Use sessionOrder in reverse to show newest sessions first.
+	for i := len(m.sessionOrder) - 1; i >= 0; i-- {
+		sessionID := m.sessionOrder[i]
 		s, ok := m.sessions[sessionID]
 		if !ok {
 			continue
