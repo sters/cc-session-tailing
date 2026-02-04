@@ -46,14 +46,24 @@ func (t *SessionTree) SetSize(width, height int) {
 
 // SetSessionTree updates the tree from Node structure.
 func (t *SessionTree) SetSessionTree(nodes []*session.Node) {
+	t.setSessionTreeInternal(nodes, false)
+}
+
+// SetSessionTreeSorted updates the tree from Node structure without preserving order.
+// Use this when you want to apply a new sort order.
+func (t *SessionTree) SetSessionTreeSorted(nodes []*session.Node) {
+	t.setSessionTreeInternal(nodes, true)
+}
+
+func (t *SessionTree) setSessionTreeInternal(nodes []*session.Node, forceSort bool) {
 	// Remember currently selected session ID to preserve focus.
 	var selectedSessionID string
 	if t.selected >= 0 && t.selected < len(t.items) {
 		selectedSessionID = t.items[t.selected].Session.ID
 	}
 
-	// Preserve current display order if we already have nodes.
-	if len(t.nodes) > 0 {
+	// Preserve current display order if we already have nodes (unless forcing sort).
+	if len(t.nodes) > 0 && !forceSort {
 		nodes = t.preserveOrder(nodes)
 	}
 

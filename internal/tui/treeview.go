@@ -216,14 +216,14 @@ func (tv *TreeView) RefreshSessions() tea.Cmd {
 // RefreshSessionsSorted updates the session tree from the manager with sorting by last update time.
 func (tv *TreeView) RefreshSessionsSorted() {
 	nodes := tv.manager.GetSessionTree()
-	tv.tree.SetSessionTree(nodes)
+	tv.tree.SetSessionTreeSorted(nodes)
 	tv.updateLogSession()
 }
 
 // RefreshSessionsSortedAndReset updates the session tree with sorting and resets selection to first item.
 func (tv *TreeView) RefreshSessionsSortedAndReset() {
 	nodes := tv.manager.GetSessionTree()
-	tv.tree.SetSessionTree(nodes)
+	tv.tree.SetSessionTreeSorted(nodes)
 	tv.tree.ResetSelection()
 	tv.updateLogSession()
 }
